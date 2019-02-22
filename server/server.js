@@ -19,12 +19,13 @@ app.use(bodyParser.json());
 app.post('/checklists', (req, res) => {
     let items = [];
     if (req.body.items) {
-        items = req.body.items;
+        req.body.items.forEach(item => {
+            items.push(_.pick(item, ['text']));
+        });
     }
-
     let checklist = new Checklist({
         title: req.body.title,
-        items: req.body.items
+        items
     });
     checklist.save().then((doc) => {
         res.send(doc);
@@ -70,6 +71,43 @@ app.delete('/checklists/:id', (req, res) => {
 
     Checklist.findOneAndDelete({_id: id}).then((checklist) => {
         if (!checklist){
+            return res.sendStatus(404);
+        }
+        res.send({checklist});
+    }).catch((e) => res.sendStatus(400));
+});
+
+app.patch('/checklists/:id', (req, res) => {
+   let id = req.params.id;
+   let body = _.pick(req.body, ['title', 'completed']);
+   body.items = [];
+
+   if (req.body.items) {
+       req.body.items.forEach( item => {
+           body.items.push(_.pick(item, ['text', 'completed']));
+       })
+   }
+
+   // verify that user sent a valid ObjectId.
+    if (!ObjectID.isValid(id)){
+        return res.sendStatus(400);
+    }
+
+    if(_.isBoolean(body.completed) && body.completed) {
+        body.completedAt = new Date().getTime();
+    } else {
+        body.completed = false;
+        body.completedAt = null;
+    }
+
+    Checklist.findOneAndUpdate({
+        _id: id
+    }, {
+        $set: body
+    }, {
+        new: true
+    }).then((checklist) => {
+        if(!checklist) {
             return res.sendStatus(404);
         }
         res.send({checklist});

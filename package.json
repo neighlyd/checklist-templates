@@ -1,0 +1,11 @@
+{
+  "name": "checklist-templates",
+  "version": "1.0.0",
+  "description": "A program to create checklists from templates.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Dustin Neighly",
+  "license": "ISC"
+}

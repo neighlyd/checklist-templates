@@ -4,7 +4,9 @@
   "description": "A program to create checklists from templates.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server/server.js",
+    "test": "export NODE_ENV=test || SET \"NODE_ENV=test\" && mocha server/**/*.test.js",
+    "test-watch": "nodemon --exec \"npm test\""
   },
   "author": "Dustin Neighly",
   "license": "ISC",

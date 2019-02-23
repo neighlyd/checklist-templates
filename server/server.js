@@ -9,6 +9,8 @@ const {bcrypt} = require('bcryptjs');
 
 const {mongoose} = require('./db/mongoose');
 const {Checklist} = require('./models/checklist');
+const {User} = require('./models/user');
+const {authenticate} = require('./middleware/authenticate');
 
 let app = express();
 
@@ -16,7 +18,7 @@ const port = process.env.PORT;
 
 app.use(bodyParser.json());
 
-app.post('/checklists', (req, res) => {
+app.post('/checklists', authenticate, (req, res) => {
     let items = [];
     if (req.body.items) {
         req.body.items.forEach(item => {
@@ -25,6 +27,7 @@ app.post('/checklists', (req, res) => {
     }
     let checklist = new Checklist({
         title: req.body.title,
+        _creator: req.user._id,
         items
     });
     checklist.save().then((doc) => {
@@ -34,15 +37,17 @@ app.post('/checklists', (req, res) => {
     });
 });
 
-app.get('/checklists', (req, res) => {
-   Checklist.find().then((checklists) => {
+app.get('/checklists', authenticate, (req, res) => {
+   Checklist.find({
+       _creator: req.user.id
+   }).then((checklists) => {
        res.send({checklists});
     }, (e) => {
        res.status(400).send(e);
    });
 });
 
-app.get('/checklists/:id', (req, res) => {
+app.get('/checklists/:id', authenticate, (req, res) => {
    let id = req.params.id;
 
    // verify that user sent a valid ObjectId.
@@ -50,7 +55,10 @@ app.get('/checklists/:id', (req, res) => {
        return res.sendStatus(400);
    }
 
-   Checklist.findOne({_id: id}).then((checklist) => {
+   Checklist.findOne({
+       _id: id,
+       _creator: req.user.id
+   }).then((checklist) => {
 
        // no checklist by that id found.
        if (!checklist){
@@ -61,7 +69,7 @@ app.get('/checklists/:id', (req, res) => {
    }).catch((e) => res.sendStatus(400));
 });
 
-app.delete('/checklists/:id', (req, res) => {
+app.delete('/checklists/:id', authenticate, (req, res) => {
     let id = req.params.id;
 
     // verify that user sent a valid ObjectId.
@@ -69,7 +77,10 @@ app.delete('/checklists/:id', (req, res) => {
         return res.sendStatus(400);
     }
 
-    Checklist.findOneAndDelete({_id: id}).then((checklist) => {
+    Checklist.findOneAndDelete({
+        _id: id,
+        _creator: req.user.id
+    }).then((checklist) => {
         if (!checklist){
             return res.sendStatus(404);
         }
@@ -77,9 +88,10 @@ app.delete('/checklists/:id', (req, res) => {
     }).catch((e) => res.sendStatus(400));
 });
 
-app.patch('/checklists/:id', (req, res) => {
+app.patch('/checklists/:id', authenticate, (req, res) => {
    let id = req.params.id;
    let body = _.pick(req.body, ['title', 'completed']);
+
    body.items = [];
 
    if (req.body.items) {
@@ -101,7 +113,8 @@ app.patch('/checklists/:id', (req, res) => {
     }
 
     Checklist.findOneAndUpdate({
-        _id: id
+        _id: id,
+        _creator: req.user.id
     }, {
         $set: body
     }, {
@@ -112,6 +125,26 @@ app.patch('/checklists/:id', (req, res) => {
         }
         res.send({checklist});
     }).catch((e) => res.sendStatus(400));
+});
+
+app.post('/users', (req, res) => {
+    // use lodash.pick() so we only pass the information we want to the User model, not just any information the user sends us.
+    let body = _.pick(req.body, ['email', 'password']);
+    let user = new User({email: body.email, password: body.password});
+
+    user.save().then(() => {
+        return user.generateAuthToken();
+    }).then((token) => {
+        res.header('x-auth', token).send(user);
+    }).catch((e) => {
+        res.status(400).send(e);
+    });
+});
+
+app.get('/users', (req, res) => {
+   User.find().then((users) => {
+       res.send(users);
+   })
 });
 
 app.listen(port, () => {

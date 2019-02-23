@@ -4,8 +4,10 @@ const {ObjectID} = require('mongodb');
 
 const {app} = require('../server');
 const {Checklist} = require('../models/checklist');
-const {checklists, populateChecklists} = require('./seed/seed');
+const {User} = require('../models/user');
+const {checklists, populateChecklists, users, populateUsers} = require('./seed/seed');
 
+beforeEach(populateUsers);
 beforeEach(populateChecklists);
 
 describe('POST /checklists', () => {
@@ -13,8 +15,11 @@ describe('POST /checklists', () => {
    let items = [{text: 'Item One'}, {text: 'Item Two'}];
 
    it('should create a new checklist with no items', (done) => {
+       let token = users[0].tokens[0].token;
+
        request(app)
            .post('/checklists')
+           .set('x-auth', token)
            .send({title})
            .expect(200)
            .expect((res) => {
@@ -34,8 +39,11 @@ describe('POST /checklists', () => {
    });
 
    it('should create a new checklist with items', (done) => {
+       let token = users[0].tokens[0].token;
+
        request(app)
            .post('/checklists')
+           .set('x-auth', token)
            .send({title, items})
            .expect(200)
            .expect((res) => {
@@ -56,7 +64,7 @@ describe('POST /checklists', () => {
    });
 
    it('should create a new checklist but only populate items with valid information', (done) => {
-
+       let token = users[0].tokens[0].token;
        let items = [{
            text: 'Valid item with invalid entries',
            completed: true,
@@ -66,6 +74,7 @@ describe('POST /checklists', () => {
 
        request(app)
            .post('/checklists')
+           .set('x-auth', token)
            .send({title, items})
            .expect(200)
            .expect((res) => {
@@ -88,8 +97,10 @@ describe('POST /checklists', () => {
    });
 
    it('should not create a new checklist with invalid request', (done) => {
+       let token = users[0].tokens[0].token;
        request(app)
            .post('/checklists')
+           .set('x-auth', token)
            .send({})
            .expect(400)
            .end((err) => {
@@ -104,8 +115,10 @@ describe('POST /checklists', () => {
    });
 
    it('should not create a new checklist with subitems if subitems are invalid', (done) => {
+       let token = users[0].tokens[0].token;
        request(app)
            .post('/checklists')
+           .set('x-auth', token)
            .send({title, items: [{text: ''}]})
            .expect(400)
            .end((err) => {
@@ -121,21 +134,29 @@ describe('POST /checklists', () => {
 });
 
 describe('GET /checklists', () => {
-   it('should get all checklists', (done) => {
+    let token = users[0].tokens[0].token;
+
+   it('should get only the checklists belonging to a user', (done) => {
+
        request(app)
            .get('/checklists')
+           .set('x-auth', token)
            .expect(200)
            .expect((res) => {
-               expect(res.body.checklists.length).toBe(2);
+               expect(res.body.checklists.length).toBe(1);
            })
            .end(done);
    })
 });
 
 describe('GET /checklists/:id', () => {
-   it('should return a checklist with a valid id if present', (done) => {
+
+   it('should return a checklist with a valid id, checklist present, and user is creator', (done) => {
+       let token = users[0].tokens[0].token;
+
        request(app)
            .get(`/checklists/${checklists[0]._id.toHexString()}`)
+           .set('x-auth', token)
            .expect(200)
            .expect((res) => {
                expect(res.body.checklist.title).toBe(checklists[0].title)
@@ -143,18 +164,32 @@ describe('GET /checklists/:id', () => {
            .end(done);
    });
 
+    it('should not return a checklist with a valid id, checklist present, and user is creator', (done) => {
+        let token = users[0].tokens[0].token;
+
+        request(app)
+            .get(`/checklists/${checklists[1]._id.toHexString()}`)
+            .set('x-auth', token)
+            .expect(404)
+            .end(done);
+    });
+
    it('should return 404 with a valid id if no checklist present', (done) => {
+       let token = users[0].tokens[0].token;
        let id = new ObjectID;
 
        request(app)
            .get(`/checklists/${id}`)
+           .set('x-auth', token)
            .expect(404)
            .end(done);
    });
 
    it('should return 400 with an invalid id', (done) => {
+       let token = users[0].tokens[0].token;
         request(app)
             .get(`/checklists/${checklists[0]._id.toHexString() + '1a'}`)
+            .set('x-auth', token)
             .expect(400)
             .end(done);
    });
@@ -162,11 +197,14 @@ describe('GET /checklists/:id', () => {
 });
 
 describe('DELETE /checklists/:id', () => {
-    let hexId = checklists[0]._id.toHexString();
 
-   it('should remove a checklist', (done) => {
+   it('should remove a checklist if user is authorized', (done) => {
+       let hexId = checklists[0]._id.toHexString();
+       let token = users[0].tokens[0].token;
+
        request(app)
            .delete(`/checklists/${hexId}`)
+           .set('x-auth', token)
            .expect(200)
            .expect((res) => {
                expect(res.body.checklist._id).toBe(hexId);
@@ -182,43 +220,86 @@ describe('DELETE /checklists/:id', () => {
            })
    });
 
+   it('should not remove a checklist if user is unauthorized', (done) => {
+       let hexId = checklists[1]._id.toHexString();
+       let token = users[0].tokens[0].token;
+
+       request(app)
+           .delete(`/checklists/${hexId}`)
+           .set('x-auth', token)
+           .expect(404)
+           .end((err, res) => {
+               if (err) {
+                   return done(err);
+               }
+               Checklist.findById(hexId).then((checklist) => {
+                   expect(checklist).toBeTruthy();
+                   done();
+               }).catch((e) => done(e));
+           });
+   });
+
    it('should return 404 if checklist not found', (done) => {
        let id = new ObjectID();
+       let token = users[0].tokens[0].token;
 
        request(app)
            .delete(`/checklists/${id}`)
+           .set('x-auth', token)
            .expect(404)
            .end(done);
    });
 
    it('should return 400 for invalid object id', (done) => {
+       let token = users[0].tokens[0].token;
+       let hexId = checklists[1]._id.toHexString();
+
        request(app)
            .delete(`/checklists/${hexId + '1a'}`)
+           .set('x-auth', token)
            .expect(400)
            .end(done);
    });
 });
 
 describe('PATCH /checklists/:id', () => {
-    it('should update checklist and set date on completed', (done) => {
-       let id = checklists[0]._id;
-       let body = checklists[0];
-       body.title = 'Updated first test';
-       body.completed = true;
+    it('should update checklist and set date on completed if user authorized', (done) => {
+        let token = users[0].tokens[0].token;
+        let id = checklists[0]._id;
+        let body = checklists[0];
+        body.title = 'Updated first test';
+        body.completed = true;
 
-       request(app)
-           .patch(`/checklists/${id}`)
-           .send(body)
-           .expect(200)
-           .expect((res) => {
+        request(app)
+            .patch(`/checklists/${id}`)
+            .set('x-auth', token)
+            .send(body)
+            .expect(200)
+            .expect((res) => {
                expect(res.body.checklist.title).toBe(body.title);
                expect(res.body.checklist.completed).toBeTruthy();
                expect(typeof res.body.checklist.completedAt).toBe('number')
            })
-           .end(done);
+            .end(done);
     });
 
-    it('should update nested checklist items', (done) => {
+    it('should not update checklist and set date on completed if user unauthorized', (done) => {
+        let token = users[0].tokens[0].token;
+        let id = checklists[1]._id;
+        let body = checklists[1];
+        body.title = 'Updated first test';
+        body.completed = true;
+
+        request(app)
+            .patch(`/checklists/${id}`)
+            .set('x-auth', token)
+            .send(body)
+            .expect(404)
+            .end(done);
+    });
+
+    it('should update nested checklist items if user authorized', (done) => {
+        let token = users[0].tokens[0].token;
         let id = checklists[0]._id;
         let body = checklists[0];
         body.items[0].text = 'Updated Item One Text';
@@ -226,6 +307,7 @@ describe('PATCH /checklists/:id', () => {
 
         request(app)
             .patch(`/checklists/${id}`)
+            .set('x-auth', token)
             .send(body)
             .expect(200)
             .expect((res) => {
@@ -237,14 +319,16 @@ describe('PATCH /checklists/:id', () => {
 
     });
 
-    it('should unset date when checklist set to uncompleted', (done) => {
-        let id = checklists[1]._id;
-        let body = checklists[1];
+    it('should unset date when checklist set to uncompleted and user is authorized', (done) => {
+        let token = users[0].tokens[0].token;
+        let id = checklists[0]._id;
+        let body = checklists[0];
         body.title = 'Updated first test';
         body.completed = false;
 
         request(app)
             .patch(`/checklists/${id}`)
+            .set('x-auth', token)
             .send(body)
             .expect(200)
             .expect((res) => {
@@ -255,6 +339,56 @@ describe('PATCH /checklists/:id', () => {
                 // console.log('completedAt value for final test is : ', res.body.checklist.completedAt);
                 // expect(typeof res.body.checklist.completedAt).toBe(null);
             })
+            .end(done);
+    });
+});
+
+describe('POST /users', () => {
+    it('should create a user', (done) => {
+        let email = 'example@example.com';
+        let password = '1235asdfk';
+
+        request(app)
+            .post('/users')
+            .send({email, password})
+            .expect(200)
+            .expect((res) => {
+                expect(res.header['x-auth']).toBeTruthy();
+                expect(res.body._id).toBeTruthy();
+                expect(res.body.email).toBe(email);
+            })
+            .end((err) => {
+                if (err) {
+                    return done(err);
+                }
+
+                User.findOne({email}).then((user) => {
+                    expect(user).toBeTruthy();
+                    expect(user.password).not.toBe(password);
+                    done();
+                }).catch((e) => done(e));
+            });
+    });
+
+    it('should not return validation errors if request invalid', (done) => {
+        let email = 'dustin.com';
+        let password = '';
+
+        request(app)
+            .post('/users')
+            .send({email, password})
+            .expect(400)
+            .end(done);
+    });
+
+    it('should not create user if email already in database', (done) => {
+        request(app)
+            .post('/users')
+            .send({
+                email: users[0].email,
+                password: 'password123'
+            })
+            .expect(400)
             .end(done);
     });
 });

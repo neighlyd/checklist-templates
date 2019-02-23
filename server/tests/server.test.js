@@ -392,3 +392,103 @@ describe('POST /users', () => {
             .end(done);
     });
 });
+
+describe('GET /users/me', () => {
+    it('should return user object if authenticated', (done) => {
+        let user = users[0];
+        let token = user.tokens[0].token;
+
+        request(app)
+            .get('/users/me')
+            .set('x-auth', token)
+            .expect(200)
+            .expect((res) => {
+                expect(res.body._id).toBe(user._id.toHexString());
+                expect(res.body.email).toBe(user.email);
+
+            })
+            .end(done);
+    });
+
+    it('should return 401 if not authenticated', (done) => {
+        let user = users[1];
+
+        request(app)
+            .get('/users/me')
+            .expect(401)
+            .expect((res) => {
+                expect(res.body).toEqual({});
+            })
+            .end(done);
+    });
+});
+
+describe('POST /users/login', () => {
+    it('should return token on successful login', (done) => {
+        let user = users[1];
+
+        request(app)
+            .post('/users/login')
+            .send({email: user.email, password: user.password})
+            .expect(200)
+            .expect((res) => {
+                expect(res.header['x-auth']).toBeTruthy();
+                expect(res.body._id).toBeTruthy();
+                expect(res.body.email).toBe(user.email);
+            })
+            .end((err, res) => {
+                if (err) {
+                    return done(err);
+                }
+                User.findById(user._id).then((user) => {
+                    expect(user.tokens[1]).toMatchObject({
+                        access: 'auth',
+                        token: res.header['x-auth']
+                    });
+                    done();
+                }).catch((e) => done(e));
+            });
+
+    });
+
+    it('should return 400 on unsuccessful login attempt', (done) => {
+        let user = users[1];
+        request(app)
+            .post('/users/login')
+            .send({email: user.email, password: user.password + '1!'})
+            .expect(400)
+            .expect((res) => {
+                expect(res.header['x-auth']).toBeFalsy();
+            })
+            .end((err) => {
+                if (err) {
+                    return done(err);
+                }
+                User.findById(users[1]._id).then((user) => {
+                    expect(user.tokens.length).toBe(1);
+                    done();
+                }).catch((e) => done(e));
+            });
+
+    });
+});
+
+describe('DELETE /users/me/token', () => {
+    it('should remove token from user object', (done) => {
+        let token = users[0].tokens[0].token;
+
+        request(app)
+            .delete('/users/me/token')
+            .set('x-auth', token)
+            .expect(200)
+            .end((err) => {
+                if (err) {
+                    return done(err);
+                }
+                User.findById(users[0]._id).then((user) => {
+                    expect(user.tokens.length).toBe(0);
+                    done();
+                }).catch((e) => done(e));
+            });
+    });
+});

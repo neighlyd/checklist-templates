@@ -10,8 +10,18 @@ let itemSchema = new mongoose.Schema({
     completed: {
         type: Boolean,
         default: false
-    }
-    // subItems: [ this ]
+    },
+    subItems: [ {
+        text: {
+            type: String,
+            minLength: 1,
+            trim: true
+        },
+        completed: {
+            type: Boolean,
+            default: false
+        }
+    } ]
 });
 
 let checklistSchema = new mongoose.Schema({

@@ -22,14 +22,16 @@ app.post('/checklists', authenticate, (req, res) => {
     let items = [];
     if (req.body.items) {
         req.body.items.forEach(item => {
-            items.push(_.pick(item, ['text']));
+            items.push(_.pick(item, ['text', 'subItems']));
         });
     }
+
     let checklist = new Checklist({
         title: req.body.title,
         _creator: req.user._id,
         items
     });
+    // console.log(JSON.stringify(checklist, undefined, 2));
     checklist.save().then((doc) => {
         res.send(doc);
     }).catch((e) => {
@@ -141,9 +143,9 @@ app.post('/users', (req, res) => {
     });
 });
 
-app.get('/users', (req, res) => {
+app.get('/users', authenticate, (req, res) => {
    User.find().then((users) => {
-       res.send(users);
+       res.send({users});
    })
 });
 

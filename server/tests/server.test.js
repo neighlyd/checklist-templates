@@ -393,6 +393,28 @@ describe('POST /users', () => {
     });
 });
 
+describe('GET /users', () => {
+   it('should return list of users if authenticated', (done) => {
+      let token = users[0].tokens[0].token;
+
+      request(app)
+          .get('/users')
+          .set('x-auth', token)
+          .expect(200)
+          .expect((res) => {
+              expect(res.body.users.length).toBe(2);
+          })
+          .end(done);
+   });
+
+   it('should return 400 if unauthenticated', (done) => {
+       request(app)
+           .get('/users')
+           .expect(401)
+           .end(done);
+   });
+});
+
 describe('GET /users/me', () => {
     it('should return user object if authenticated', (done) => {
         let user = users[0];
